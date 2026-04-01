@@ -43,10 +43,20 @@ var app = builder.Build();
 
 if (useSqlServer)
 {
-    using (var scope = app.Services.CreateScope())
+    try
     {
-        var db = scope.ServiceProvider.GetRequiredService<BookstoreContext>();
-        await db.Database.MigrateAsync();
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BookstoreContext>();
+            await db.Database.MigrateAsync();
+        }
+    }
+    catch (Exception ex)
+    {
+        // Azure Log stream often misses early startup logs; this prints to stderr before the host exits.
+        Console.Error.WriteLine("BookstoreAPI: SQL Server migration failed.");
+        Console.Error.WriteLine(ex);
+        throw;
     }
 }
 
