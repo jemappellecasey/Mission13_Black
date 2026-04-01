@@ -4,7 +4,7 @@ This guide walks through a common setup for this project:
 
 - **Front end:** React (Vite) → **Azure Static Web Apps**
 - **Back end:** ASP.NET Core minimal API → **Azure App Service** (Linux is typical)
-- **Database:** SQLite file (`Bookstore.sqlite`) shipped with the API
+- **Database:** **SQLite** (file shipped with the API) or **Azure SQL Database** (managed; see section 1.3 below)
 
 Your instructor may also allow other hosting options; this path matches the course notes and works well with `routes.json` and `staticwebapp.config.json` in `bookstore-app/public/`.
 
@@ -63,16 +63,38 @@ az webapp deployment source config-zip --resource-group <your-rg> --name <your-a
 
 After deployment, the site root should contain `BookstoreAPI.dll`, `Bookstore.sqlite` (if copied from the project), and `appsettings.json` / `appsettings.Production.json`.
 
-### 1.3 SQLite database on the server
+### 1.3 Database options
 
-The project copies `Bookstore.sqlite` into the publish output. The API resolves the database path at runtime (see `Program.cs` and `appsettings.Production.json`).
+#### Option A — SQLite on App Service (simplest)
 
-- **Application settings** (Configuration → Application settings): add if needed:
+The project copies `Bookstore.sqlite` into the publish output. The API resolves the database path at runtime (see `Program.cs`).
+
+- **Application settings** (Configuration → Application settings), if needed:
   - **`ConnectionStrings__Bookstore`** = `Data Source=Bookstore.sqlite`
 
 This path is relative to the app’s working directory on App Service; the copied file next to the DLL should work after a correct publish.
 
-**Note:** SQLite on App Service is fine for a class project. If the app restarts on a different instance or the file is not persisted, data could change; for production you would use Azure SQL or another managed database.
+**Note:** SQLite on App Service is fine for many class projects. If the app scales out or the file is not persisted, consider Azure SQL.
+
+#### Option B — Azure SQL Database (managed, recommended if you want the DB in Azure)
+
+1. In the Azure Portal, create a **SQL database** (or **Azure SQL Database**). Create a server if you do not have one. Note the **server name** (e.g. `yourserver.database.windows.net`).
+
+2. **Networking / firewall:** Allow connections from Azure services (or add your App Service outbound IPs). For development, you can temporarily allow your client IP.
+
+3. In the SQL database’s **Connection strings** blade, copy the **ADO.NET** connection string. Replace `{your_username}` and `{your_password}` with the SQL admin login you created.
+
+4. On your **Web App** (App Service) → **Configuration** → **Application settings**, add:
+
+   | Name | Value |
+   |------|--------|
+   | **`ConnectionStrings__Bookstore`** | The full ADO.NET connection string (must include `Server=tcp:xxx.database.windows.net` and credentials). |
+
+   The API **auto-detects** SQL Server when the connection string looks like Azure SQL (`database.windows.net` or `Server=` + `Initial Catalog` / `Database=`). It applies **EF Core migrations** on startup so the `Books` table is created automatically.
+
+5. Optional override: **`Database__Provider`** = `SqlServer` or `Sqlite` if you need to force a provider (normally not required).
+
+6. **Seed data:** SQLite data in `Bookstore.sqlite` is **not** copied to Azure SQL automatically. After the first deploy, use **SQL Server Management Studio**, **Azure Data Studio**, or the portal **Query editor** to run `INSERT` statements, or add a small seed step in code if your instructor allows it.
 
 ### 1.4 CORS (required for the SPA)
 
@@ -170,7 +192,7 @@ Set **`Cors__AllowedOrigins`** on the **API** App Service to exactly the **Stati
 | Blank page or wrong API host | Rebuild the SPA with `VITE_API_BASE_URL` set to the **live** API URL; env vars are compile-time for Vite. |
 | Browser CORS error | `Cors__AllowedOrigins` on API matches the **exact** front-end origin (scheme + host, no trailing slash). |
 | API 404 | App Service URL + path `/api/...` — confirm the API project deployed and is listening. |
-| API 500 on first DB access | SQLite file missing or wrong path; verify publish includes `Bookstore.sqlite` and connection string. |
+| API 500 on first DB access | **SQLite:** file missing or wrong path; verify publish includes `Bookstore.sqlite` and connection string. **Azure SQL:** firewall / connection string / credentials; check Log stream. |
 | `/adminbooks` 404 on refresh | Ensure `dist` includes `routes.json` and `staticwebapp.config.json` from `public/` (Vite copies them). Redeploy after `npm run build`. |
 
 ---
@@ -189,7 +211,7 @@ Submit the **public URL** of your deployed **front end** (Static Web App). If de
 | SPA URL | `https://<static-web-app>.azurestaticapps.net` |
 | Build env (front end) | `VITE_API_BASE_URL=<API base URL>` |
 | App Service setting (API) | `Cors__AllowedOrigins=<SPA URL>` |
-| Optional DB setting (API) | `ConnectionStrings__Bookstore=Data Source=Bookstore.sqlite` |
+| DB on App Service (API) | **SQLite:** `ConnectionStrings__Bookstore=Data Source=Bookstore.sqlite` **Azure SQL:** paste ADO.NET string from the SQL database blade (auto-detected). |
 
 ---
 

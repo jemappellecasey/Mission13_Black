@@ -17,6 +17,7 @@ public class BookstoreContext : DbContext
         {
             entity.ToTable("Books");
             entity.HasKey(b => b.BookID);
+            entity.Property(b => b.Price).HasPrecision(18, 2);
         });
     }
 }

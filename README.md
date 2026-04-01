@@ -52,7 +52,7 @@ Typical setup: **React** on **Azure Static Web Apps** (or Azure Storage static w
 ### API (App Service)
 
 1. Publish the `BookstoreAPI` project (e.g. zip deploy or GitHub Actions).
-2. Ensure **`Bookstore.sqlite`** is deployed with the app (it is included from the project via `BookstoreAPI.csproj`), or set **`ConnectionStrings__Bookstore`** to `Data Source=Bookstore.sqlite` in **Configuration → Application settings** if needed.
+2. **Database:** For **SQLite**, ensure **`Bookstore.sqlite`** is deployed (included via `BookstoreAPI.csproj`) or set **`ConnectionStrings__Bookstore`** = `Data Source=Bookstore.sqlite`. For **Azure SQL Database**, set **`ConnectionStrings__Bookstore`** to the ADO.NET connection string from the Azure portal; the API detects SQL Server and applies migrations on startup. See **`AzureDeployment.md`** for firewall and seeding notes.
 3. **CORS:** In App Service application settings, set **`Cors__AllowedOrigins`** to your front-end origin (semicolon-separated if multiple), for example `https://your-app.azurestaticapps.net`. If unset, the API allows any origin (fine for local dev; tighten for production).
 
 Submit the **deployed site URL** via Learning Suite (or your GitHub repo link if the site is not deployed).

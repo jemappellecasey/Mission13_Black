@@ -30,11 +30,25 @@ builder.Services.AddCors(options =>
     });
 });
 
-var connectionString = ResolveSqliteConnectionString(builder);
+var (useSqlServer, connectionString) = ResolveDatabaseConfiguration(builder);
 builder.Services.AddDbContext<BookstoreContext>(options =>
-    options.UseSqlite(connectionString));
+{
+    if (useSqlServer)
+        options.UseSqlServer(connectionString);
+    else
+        options.UseSqlite(connectionString);
+});
 
 var app = builder.Build();
+
+if (useSqlServer)
+{
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<BookstoreContext>();
+        await db.Database.MigrateAsync();
+    }
+}
 
 app.UseCors();
 
@@ -176,10 +190,43 @@ static string? ValidateBookInput(Book input)
     return null;
 }
 
-// SQLite path: configured connection string, else file next to the DLL, else ../Bookstore.sqlite.
-static string ResolveSqliteConnectionString(WebApplicationBuilder builder)
+// Returns (useSqlServer, connectionString). Azure SQL: set ConnectionStrings__Bookstore to the ADO.NET string from the portal (or use Database:Provider = SqlServer).
+static (bool UseSqlServer, string ConnectionString) ResolveDatabaseConfiguration(WebApplicationBuilder builder)
 {
+    var provider = builder.Configuration["Database:Provider"]?.Trim();
     var configured = builder.Configuration.GetConnectionString("Bookstore");
+
+    if (string.Equals(provider, "SqlServer", StringComparison.OrdinalIgnoreCase))
+    {
+        if (string.IsNullOrWhiteSpace(configured))
+            throw new InvalidOperationException("ConnectionStrings:Bookstore is required when Database:Provider is SqlServer.");
+        return (true, configured);
+    }
+
+    if (string.Equals(provider, "Sqlite", StringComparison.OrdinalIgnoreCase))
+        return (false, ResolveSqliteConnectionString(builder, configured));
+
+    if (!string.IsNullOrWhiteSpace(configured) && LooksLikeSqlServerConnectionString(configured))
+        return (true, configured);
+
+    return (false, ResolveSqliteConnectionString(builder, configured));
+}
+
+static bool LooksLikeSqlServerConnectionString(string connectionString)
+{
+    var s = connectionString.Trim();
+    if (s.Contains("database.windows.net", StringComparison.OrdinalIgnoreCase))
+        return true;
+    if (s.StartsWith("Server=", StringComparison.OrdinalIgnoreCase) && s.Contains("Initial Catalog", StringComparison.OrdinalIgnoreCase))
+        return true;
+    if (s.StartsWith("Server=", StringComparison.OrdinalIgnoreCase) && s.Contains("Database=", StringComparison.OrdinalIgnoreCase))
+        return true;
+    return false;
+}
+
+// SQLite path: configured connection string, else file next to the DLL, else ../Bookstore.sqlite.
+static string ResolveSqliteConnectionString(WebApplicationBuilder builder, string? configured)
+{
     if (!string.IsNullOrWhiteSpace(configured))
         return configured;
 
