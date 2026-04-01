@@ -1,0 +1,9 @@
+node_modules/
+**/bin/
+**/obj/
+**/.vs/
+*.user
+bookstore-app/dist/
+bookstore-app/.env
+bookstore-app/.env.local
+bookstore-app/.env.*.local
