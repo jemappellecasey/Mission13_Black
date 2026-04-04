@@ -4,6 +4,10 @@ node_modules/
 **/.vs/
 *.user
 bookstore-app/dist/
+
+# SPA build copied here before publish (CI); keep folder with .gitkeep only in git
+BookstoreAPI/wwwroot/*
+!BookstoreAPI/wwwroot/.gitkeep
 bookstore-app/.env
 bookstore-app/.env.local
 bookstore-app/.env.*.local

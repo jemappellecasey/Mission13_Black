@@ -1,5 +1,6 @@
 // Bookstore REST API: categories, paginated books, and admin CRUD (POST/PUT/DELETE).
 // SQLite path: connection string "Bookstore", else file next to the published DLL, else ../Bookstore.sqlite.
+// Production SPA: Vite output in wwwroot; UseDefaultFiles/UseStaticFiles + MapFallbackToFile for React Router.
 using Microsoft.EntityFrameworkCore;
 using BookstoreAPI;
 using BookstoreAPI.Models;
@@ -61,6 +62,8 @@ if (useSqlServer)
 }
 
 app.UseCors();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 // GET /api/categories — distinct book categories for filtering
 app.MapGet("/api/categories", async (BookstoreContext db) =>
@@ -183,6 +186,10 @@ app.MapDelete("/api/books/{id:int}", async (int id, BookstoreContext db) =>
     return Results.NoContent();
 })
 .WithName("DeleteBook");
+
+var spaIndex = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "index.html");
+if (File.Exists(spaIndex))
+    app.MapFallbackToFile("index.html");
 
 app.Run();
 

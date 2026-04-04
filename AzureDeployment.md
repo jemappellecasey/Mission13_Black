@@ -1,12 +1,20 @@
 # Deploying the Mission 13 Bookstore to Azure
 
-This guide walks through a common setup for this project:
+## Recommended: single App Service (API + React)
 
-- **Front end:** React (Vite) → **Azure Static Web Apps**
-- **Back end:** ASP.NET Core minimal API → **Azure App Service** (Linux is typical)
-- **Database:** **SQLite** (file shipped with the API) or **Azure SQL Database** (managed; see section 1.3 below)
+This repository’s default path is **one** **Azure App Service** Web App that:
 
-Your instructor may also allow other hosting options; this path matches the course notes and works well with `routes.json` and `staticwebapp.config.json` in `bookstore-app/public/`.
+- Hosts the **ASP.NET Core** minimal API at **`/api/...`**
+- Serves the **Vite** production build from **`wwwroot`** (CI copies `bookstore-app/dist` into `BookstoreAPI/wwwroot` before `dotnet publish`)
+- Uses **`MapFallbackToFile("index.html")`** so deep links like `/adminbooks` work on refresh (no separate Static Web App required)
+
+**GitHub Actions:** `.github/workflows/main_mission13.yml` builds the SPA with **`VITE_API_BASE_URL=__SAME_ORIGIN__`** so the browser calls **`/api/...`** on the same host.
+
+**CORS:** Same-origin requests do not need **`Cors__AllowedOrigins`**. Add it only if the UI is hosted on a different domain than the API.
+
+**Static Web Apps:** The template workflow **`azure-static-web-apps-*.yml`** is **disabled** (manual `workflow_dispatch` only) so it does not compete with this deployment. You can still use Static Web Apps as an alternative (Part 2).
+
+**Database:** **SQLite** (file shipped with the API) or **Azure SQL Database** (managed; see section 1.3 below).
 
 ---
 
@@ -30,7 +38,7 @@ Your instructor may also allow other hosting options; this path matches the cour
    - **Subscription / Resource group:** Create or pick a group (e.g. `rg-bookstore-m13`).
    - **Name:** e.g. `bookstore-api-yourname` (must be globally unique). This becomes `https://bookstore-api-yourname.azurewebsites.net`.
    - **Publish:** Code.
-   - **Runtime stack:** **.NET 8** (LTS).
+   - **Runtime stack:** **.NET 10** (match `net10.0` in `BookstoreAPI.csproj`).
    - **Operating System:** **Linux** (recommended) or Windows.
    - **Region:** Choose one near you.
 4. **App Service plan:** Start with the cheapest **Dev/Test** / **B1** (or **F1** Free if available and acceptable for class; free tier has limitations).
@@ -96,17 +104,11 @@ This path is relative to the app’s working directory on App Service; the copie
 
 6. **Seed data:** SQLite data in `Bookstore.sqlite` is **not** copied to Azure SQL automatically. After the first deploy, use **SQL Server Management Studio**, **Azure Data Studio**, or the portal **Query editor** to run `INSERT` statements, or add a small seed step in code if your instructor allows it.
 
-### 1.4 CORS (required for the SPA)
+### 1.4 CORS (only if the SPA is on a different origin)
 
-The browser must be allowed to call your API from your Static Web App origin.
+If the React app is served from the **same** App Service as the API (recommended in this repo), the browser uses the **same origin** for `/` and `/api/...`, and **CORS is not required**.
 
-1. Web App → **Configuration** → **Application settings** → **New application setting**.
-2. Name: **`Cors__AllowedOrigins`**  
-   Value: your **front-end URL only**, e.g. `https://your-app-name.azurestaticapps.net`  
-   (No trailing slash. For multiple origins, use **semicolons** between URLs.)
-3. **Save**, then restart the app if prompted.
-
-Until you set this, **do not** rely on “allow all” in production—your API code only restricts origins when `Cors:AllowedOrigins` is non-empty.
+If you host the UI elsewhere (e.g. **Static Web Apps** on another URL), set **`Cors__AllowedOrigins`** on the API to that origin (no trailing slash; semicolons for multiple).
 
 ### 1.5 Test the API
 
@@ -120,11 +122,13 @@ You should see JSON. If you get **500**, check **Log stream** or **Diagnose and 
 
 ---
 
-## Part 2 — Deploy the React app (Static Web Apps)
+## Part 2 — Optional: deploy the React app separately (Static Web Apps)
+
+Use this only if you are **not** using the single App Service host above.
 
 ### 2.1 Why Static Web Apps
 
-Azure Static Web Apps hosts the built Vite app, gives you HTTPS and a URL, and works with the `navigationFallback` in `public/staticwebapp.config.json` so routes like `/adminbooks` load the SPA (in addition to `routes.json` as required by your course).
+Azure Static Web Apps hosts the built Vite app on its own URL. You must set **`VITE_API_BASE_URL`** to your **API** App Service URL at build time and configure **`Cors__AllowedOrigins`** on the API. For SPA routing, `public/staticwebapp.config.json` and `routes.json` help on the SWA side.
 
 ### 2.2 Build settings (important)
 
@@ -176,12 +180,9 @@ The API URL is **baked in at build time** via Vite:
 
 2. Upload the contents of `bookstore-app/dist` using **Azure Storage** static website + CDN, or **Static Web Apps** “Bring your own” deployment options if your portal supports it.
 
-### 2.5 Final CORS check
+### 2.5 Final CORS check (split deployment only)
 
-Set **`Cors__AllowedOrigins`** on the **API** App Service to exactly the **Static Web App URL** (including `https://`). Then hard refresh the SPA and test:
-
-- Catalog loads books.
-- **Admin books** (`/adminbooks`) loads and can add/edit/delete.
+Set **`Cors__AllowedOrigins`** on the **API** to the **Static Web App URL** if the UI is not same-origin. Then test catalog and **Admin books** (`/adminbooks`).
 
 ---
 
@@ -193,13 +194,13 @@ Set **`Cors__AllowedOrigins`** on the **API** App Service to exactly the **Stati
 | Browser CORS error | `Cors__AllowedOrigins` on API matches the **exact** front-end origin (scheme + host, no trailing slash). |
 | API 404 | App Service URL + path `/api/...` — confirm the API project deployed and is listening. |
 | API 500 on first DB access | **SQLite:** file missing or wrong path; verify publish includes `Bookstore.sqlite` and connection string. **Azure SQL:** firewall / connection string / credentials; check Log stream. |
-| `/adminbooks` 404 on refresh | Ensure `dist` includes `routes.json` and `staticwebapp.config.json` from `public/` (Vite copies them). Redeploy after `npm run build`. |
+| `/adminbooks` 404 on refresh | **Single host:** `MapFallbackToFile` + `wwwroot` has `index.html`. **Static Web App:** `staticwebapp.config.json` / `routes.json` in `dist`. |
 
 ---
 
 ## Part 4 — What to submit (Learning Suite)
 
-Submit the **public URL** of your deployed **front end** (Static Web App). If deployment is incomplete, your instructor may accept a **GitHub** link instead—follow the syllabus.
+Submit the **public URL** of your deployed site (for the recommended setup, the **App Service** URL serves both UI and API). If deployment is incomplete, your instructor may accept a **GitHub** link instead—follow the syllabus.
 
 ---
 
@@ -207,11 +208,10 @@ Submit the **public URL** of your deployed **front end** (Static Web App). If de
 
 | Item | Example |
 |------|---------|
-| API base URL | `https://<api-app-name>.azurewebsites.net` |
-| SPA URL | `https://<static-web-app>.azurestaticapps.net` |
-| Build env (front end) | `VITE_API_BASE_URL=<API base URL>` |
-| App Service setting (API) | `Cors__AllowedOrigins=<SPA URL>` |
-| DB on App Service (API) | **SQLite:** `ConnectionStrings__Bookstore=Data Source=Bookstore.sqlite` **Azure SQL:** paste ADO.NET string from the SQL database blade (auto-detected). |
+| **Single host (recommended)** | One URL: `https://<app-name>.azurewebsites.net` (UI + `/api/...`) |
+| Build env (CI, single host) | `VITE_API_BASE_URL=__SAME_ORIGIN__` |
+| **Split host (optional)** | SPA URL (SWA) + API URL; `VITE_API_BASE_URL=<API URL>`; `Cors__AllowedOrigins=<SPA URL>` |
+| DB on App Service | **SQLite:** `ConnectionStrings__Bookstore=Data Source=Bookstore.sqlite` **Azure SQL:** ADO.NET string from SQL blade (auto-detected). |
 
 ---
 
@@ -236,7 +236,7 @@ Use this to self-check before you submit.
 |-----------|------------------------|
 | **App compiles and runs** | `dotnet build` and `npm run build` succeed; local catalog and admin pages load without console/network errors when the API is running. |
 | **Add / edit / delete books** | On `/adminbooks`, you can create a row, change it, and remove it; the catalog reflects changes after refresh. |
-| **Deployed on Azure (front + back)** | Static Web App URL loads the UI; API `https://…azurewebsites.net/api/categories` returns JSON from the browser’s address bar; SPA can call the API (CORS + `VITE_API_BASE_URL` set at build time). |
+| **Deployed on Azure (front + back)** | App Service URL loads the UI; `/api/categories` returns JSON (single host) **or** SWA + API with CORS and `VITE_API_BASE_URL` if split. |
 | **Code quality** | Clear names, short file/module comments where helpful, consistent formatting; run `npm run lint` with no errors. |
 
 Deployment itself must be done in Azure; this repo includes `AzureDeployment.md`, `routes.json`, `staticwebapp.config.json`, and CORS/API URL configuration to support it.
